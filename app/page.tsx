@@ -23,11 +23,12 @@ export default function CaloriXApp() {
           const cols = row.split(',')
 
           return {
-            name: cols[0]?.replace(/"/g, ''),
-            calories: Number(cols[1]),
-            protein: Number(cols[2]),
-            carbs: Number(cols[3]),
-            fat: Number(cols[4]),
+            name: cols[0]?.replace(/"/g, '').trim(),
+
+            calories: Number(cols[1]?.replace(/[^\d.]/g, '')) || 0,
+            protein: Number(cols[2]?.replace(/[^\d.]/g, '')) || 0,
+            carbs: Number(cols[3]?.replace(/[^\d.]/g, '')) || 0,
+            fat: Number(cols[4]?.replace(/[^\d.]/g, '')) || 0,
           }
         })
         .filter((food) => food.name)
@@ -58,18 +59,17 @@ export default function CaloriXApp() {
   const multiplier = amount / 100
 
   const adjustedFood = {
-  id: crypto.randomUUID(),
-  name: food.name,
+    id: crypto.randomUUID(),
+    name: food.name,
 
-  grams: amount,
+    grams: amount,
 
-  calories: Math.round(Number(food.calories || 0) * multiplier),
-  protein: Math.round(Number(food.protein || 0) * multiplier),
-  carbs: Math.round(Number(food.carbs || 0) * multiplier),
-  fat: Math.round(Number(food.fat || 0) * multiplier),
+    calories: Math.round((Number(food.calories) * multiplier) || 0),
+    protein: Math.round((Number(food.protein) * multiplier) || 0),
+    carbs: Math.round((Number(food.carbs) * multiplier) || 0),
+    fat: Math.round((Number(food.fat) * multiplier) || 0),
 
-  // 🔥 guarda todo el original sin romper nada
-  data: { ...food },
+    data: food,
   }
 
   setSelectedFoods((prev) => [...prev, adjustedFood])
