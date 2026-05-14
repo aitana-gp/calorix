@@ -11,13 +11,55 @@ const supabase = createClient(
 type Food = {
   id: string
   name: string
-  grams?: number
   calories?: number
   protein?: number
   carbs?: number
   fat?: number
+  grams?: number
   data?: any
   [key: string]: any
+}
+
+/* ---------------- SAFE CSV PARSER ---------------- */
+function parseCSV(text: string) {
+  const lines = text
+    .replace(/\r/g, '')
+    .trim()
+    .split('\n')
+
+  if (lines.length < 2) return []
+
+  const headers = lines[0]
+    .split(',')
+    .map(h => h.replace(/"/g, '').trim().toLowerCase())
+
+  return lines.slice(1).map((line, i) => {
+    const cols = line.split(',')
+
+    const obj: any = {
+      id: `${i}`,
+    }
+
+    headers.forEach((h, index) => {
+      const raw = cols[index]?.replace(/"/g, '').trim()
+
+      if (!raw) return
+
+      obj[h] = isNaN(Number(raw)) ? raw : Number(raw)
+    })
+
+    return obj
+  }).filter(f => f.name)
+}
+
+/* ---------------- FUZZY SEARCH ---------------- */
+function fuzzyMatch(text: string, query: string) {
+  if (!text || !query) return false
+
+  const t = text.toLowerCase()
+  const q = query.toLowerCase()
+
+  return t.includes(q)
 }
 
 export default function CaloriXApp() {
@@ -26,87 +68,41 @@ export default function CaloriXApp() {
   const [selectedFoods, setSelectedFoods] = useState<Food[]>([])
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
 
-  // ---------------- PARSE GOOGLE SHEETS ----------------
-  function parseCSV(text: string) {
-    const lines = text.trim().split('\n')
-    const headers = lines[0].split(',').map(h => h.replace(/"/g, '').trim())
-
-    return lines.slice(1).map((line, i) => {
-      const cols = line.split(',')
-
-      const obj: any = { id: i }
-
-      headers.forEach((h, index) => {
-        const key = h.toLowerCase()
-        const value = cols[index]?.replace(/"/g, '')
-
-        obj[key] =
-          value && !isNaN(Number(value)) ? Number(value) : value
-      })
-
-      return obj
-    }).filter(f => f.name)
-  }
-
-  // ---------------- LOAD DATA ----------------
+  /* ---------------- LOAD GOOGLE SHEETS ---------------- */
   useEffect(() => {
     async function loadFoods() {
-      const res = await fetch(
-        'https://docs.google.com/spreadsheets/d/e/2PACX-1vTGsgfTLNO8W33sjozExwtwZ0hXxZFq5OJKfvl_q92uY-5EZUsN-miK4xs_uxytTEGDcaRdkzxUd7tB/pub?output=csv'
-      )
+      try {
+        const res = await fetch(
+          'https://docs.google.com/spreadsheets/d/e/2PACX-1vTGsgfTLNO8W33sjozExwtwZ0hXxZFq5OJKfvl_q92uY-5EZUsN-miK4xs_uxytTEGDcaRdkzxUd7tB/pub?output=csv'
+        )
 
-      const text = await res.text()
+        const text = await res.text()
 
-      console.log('RAW CSV TEXT:', text)
+        console.log('RAW CSV LOADED:', text.slice(0, 200))
 
-      const parsed = parseCSV(text)
+        const parsed = parseCSV(text)
 
+        console.log('PARSED FOODS:', parsed)
 
-      console.log('PARSED FOODS:', parsed)
-      console.log('FIRST FOOD:', parsed?.[0])
-
-      setFoods(parsed)
+        setFoods(parsed)
+      } catch (err) {
+        console.error('ERROR LOADING FOODS:', err)
+      }
     }
 
     loadFoods()
-    loadMeals()
   }, [])
 
-  // ---------------- LOAD SUPABASE MEALS ----------------
-  async function loadMeals() {
-    const { data } = await supabase
-      .from('meals')
-      .select('*')
-      .order('created_at', { ascending: false })
-
-    if (!data) return
-
-    setSelectedFoods(
-      data.map(m => ({
-        id: m.id,
-        name: m.name,
-        grams: m.grams,
-        calories: m.calories,
-        protein: m.protein,
-        carbs: m.carbs,
-        fat: m.fat,
-        data: m.data || {},
-      }))
-    )
-  }
-
-  // ---------------- SEARCH ----------------
+  /* ---------------- SEARCH ---------------- */
   const filteredFoods = useMemo(() => {
     if (!search) return []
 
     return foods
-      .filter(f =>
-        f.name.toLowerCase().includes(search.toLowerCase())
-      )
-      .slice(0, 8)
+      .filter(f => fuzzyMatch(f.name, search))
+      .slice(0, 10)
   }, [search, foods])
 
-  // ---------------- ADD FOOD (FIXED + COMPLETE) ----------------
+  /* ---------------- ADD FOOD ---------------- */
   async function addFood(food: any) {
     const grams = prompt('How many grams?')
     if (!grams) return
@@ -115,20 +111,14 @@ export default function CaloriXApp() {
     const multiplier = amount / 100
 
     const adjusted: any = {
+      id: `${Date.now()}`,
       name: food.name,
       grams: amount,
       calories: Math.round((food.calories || 0) * multiplier),
       protein: Math.round((food.protein || 0) * multiplier),
       carbs: Math.round((food.carbs || 0) * multiplier),
       fat: Math.round((food.fat || 0) * multiplier),
-
-      // extras dinámicos si existen en tu sheet
-      fiber: food.fiber ? Math.round(food.fiber * multiplier) : null,
-      sugar: food.sugar ? Math.round(food.sugar * multiplier) : null,
-      water: food.water ? Math.round(food.water * multiplier) : null,
-
       data: food,
-      id: `${Date.now()}`,
     }
 
     setSelectedFoods(prev => [adjusted, ...prev])
@@ -146,15 +136,15 @@ export default function CaloriXApp() {
     setSearch('')
   }
 
-  // ---------------- TOGGLE EXPAND ----------------
-  function toggleFood(id: string) {
+  /* ---------------- TOGGLE ---------------- */
+  function toggle(id: string) {
     setExpanded(prev => ({
       ...prev,
       [id]: !prev[id],
     }))
   }
 
-  // ---------------- DASHBOARD TOTALS ----------------
+  /* ---------------- TOTALS ---------------- */
   const totals = selectedFoods.reduce(
     (acc, f) => {
       acc.calories += f.calories || 0
@@ -195,7 +185,7 @@ export default function CaloriXApp() {
       {/* SEARCH */}
       <input
         className="w-full p-4 bg-zinc-900 rounded-xl mb-4"
-        placeholder="Search food..."
+        placeholder="Search foods..."
         value={search}
         onChange={e => setSearch(e.target.value)}
       />
@@ -203,6 +193,10 @@ export default function CaloriXApp() {
       {/* RESULTS */}
       {search && (
         <div className="space-y-2 mb-6">
+          {filteredFoods.length === 0 && (
+            <p className="text-zinc-500">No results found</p>
+          )}
+
           {filteredFoods.map(food => (
             <button
               key={food.id}
@@ -225,7 +219,6 @@ export default function CaloriXApp() {
         {selectedFoods.map(food => (
           <div key={food.id} className="bg-zinc-900 p-4 rounded-xl">
 
-            {/* MAIN ROW */}
             <div className="flex justify-between">
               <div>
                 <p className="font-bold">{food.name}</p>
@@ -239,17 +232,15 @@ export default function CaloriXApp() {
               </div>
             </div>
 
-            {/* BUTTON */}
             <button
-              onClick={() => toggleFood(food.id)}
+              onClick={() => toggle(food.id)}
               className="mt-3 text-xs bg-zinc-800 px-3 py-1 rounded"
             >
-              {expanded[food.id] ? 'Hide details' : 'Expand details'}
+              {expanded[food.id] ? 'Hide' : 'Expand'}
             </button>
 
-            {/* EXPANDED MACROS */}
             {expanded[food.id] && (
-              <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-zinc-300">
+              <div className="mt-3 grid grid-cols-2 text-xs text-zinc-300 gap-1">
                 {Object.entries(food.data || food)
                   .filter(([k, v]) =>
                     typeof v === 'number' &&
@@ -257,8 +248,7 @@ export default function CaloriXApp() {
                   )
                   .map(([k, v]) => (
                     <p key={k}>
-                      <span className="capitalize">{k}</span>
-                      <span>{typeof v === 'number' ? v.toFixed(0) : String(v ?? '-')}</span>
+                      {k}: {String(v)}
                     </p>
                   ))}
               </div>
