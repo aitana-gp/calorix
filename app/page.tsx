@@ -2,10 +2,18 @@
 
 import { useEffect, useMemo, useState } from 'react'
 
+type Food = {
+  id: string
+  name: string
+  grams?: number
+  [key: string]: any
+}
+
 export default function CaloriXApp() {
-  const [foods, setFoods] = useState<any[]>([])
+  const [foods, setFoods] = useState<Food[]>([])
   const [search, setSearch] = useState('')
-  const [selectedFoods, setSelectedFoods] = useState<any[]>([])
+  const [selectedFoods, setSelectedFoods] = useState<Food[]>([])
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({})
 
   useEffect(() => {
     async function loadFoods() {
@@ -14,22 +22,29 @@ export default function CaloriXApp() {
       )
 
       const text = await res.text()
+      const rows = text.trim().split('\n')
 
-      const rows = text.split('\n').slice(1)
+      const headers = rows[0].split(',').map(h => h.replace(/"/g, '').trim())
 
-      const parsedFoods = rows
-        .map((row) => {
-          const cols = row.split(',')
+      const parsedFoods = rows.slice(1).map((row, index) => {
+        const cols = row.split(',')
 
-          return {
-            name: cols[0]?.replace(/"/g, ''),
-            calories: Number(cols[1]),
-            protein: Number(cols[2]),
-            carbs: Number(cols[3]),
-            fat: Number(cols[4]),
-          }
+        const obj: any = {
+          id: `${index}-${cols[0]}`,
+        }
+
+        headers.forEach((header, i) => {
+          const key = header.toLowerCase()
+          const value = cols[i]?.replace(/"/g, '')
+
+          obj[key] =
+            isNaN(Number(value)) || value === ''
+              ? value
+              : Number(value)
         })
-        .filter((food) => food.name)
+
+        return obj
+      }).filter(f => f.name)
 
       setFoods(parsedFoods)
     }
@@ -39,36 +54,38 @@ export default function CaloriXApp() {
 
   const filteredFoods = useMemo(() => {
     if (!search) return []
-
     return foods
-      .filter((food) =>
-        food.name.toLowerCase().includes(search.toLowerCase())
-      )
+      .filter(f => f.name?.toLowerCase().includes(search.toLowerCase()))
       .slice(0, 8)
   }, [search, foods])
 
-  function addFood(food: any) {
-  const grams = prompt('How many grams?')
+  function addFood(food: Food) {
+    const grams = prompt('How many grams?')
+    if (!grams) return
 
-  if (!grams) return
+    const amount = Number(grams)
+    const multiplier = amount / 100
 
-  const amount = Number(grams)
+    const adjusted: Food = {
+      ...food,
+      grams: amount,
+      id: `${food.id}-${Date.now()}`,
+    }
 
-  const multiplier = amount / 100
+    // scale ALL numeric macros dynamically
+    Object.keys(adjusted).forEach(key => {
+      if (
+        key !== 'name' &&
+        key !== 'id' &&
+        typeof adjusted[key] === 'number'
+      ) {
+        adjusted[key] = Math.round(adjusted[key] * multiplier)
+      }
+    })
 
-  const adjustedFood = {
-    ...food,
-    grams: amount,
-    calories: Math.round(food.calories * multiplier),
-    protein: Math.round(food.protein * multiplier),
-    carbs: Math.round(food.carbs * multiplier),
-    fat: Math.round(food.fat * multiplier),
+    setSelectedFoods(prev => [...prev, adjusted])
+    setSearch('')
   }
-
-  setSelectedFoods((prev) => [...prev, adjustedFood])
-
-  setSearch('')
-}
 
   const totals = selectedFoods.reduce(
     (acc, food) => {
@@ -76,139 +93,54 @@ export default function CaloriXApp() {
       acc.protein += food.protein || 0
       acc.carbs += food.carbs || 0
       acc.fat += food.fat || 0
-
       return acc
     },
-    {
-      calories: 0,
-      protein: 0,
-      carbs: 0,
-      fat: 0,
-    }
+    { calories: 0, protein: 0, carbs: 0, fat: 0 }
   )
+
+  function toggleFood(id: string) {
+    setExpanded(prev => ({
+      ...prev,
+      [id]: !prev[id],
+    }))
+  }
 
   return (
     <div className="min-h-screen bg-black text-white overflow-hidden">
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,#ff4d00_0%,transparent_30%),radial-gradient(circle_at_bottom_left,#ff0055_0%,transparent_35%)] opacity-30" />
-
       <div className="relative z-10 max-w-6xl mx-auto p-6 md:p-10">
-        <div className="flex justify-between items-center mb-10">
-          <div>
-            <h1 className="text-6xl md:text-7xl font-black tracking-tight">
-              CALORI<span className="text-orange-500">X</span>
-            </h1>
 
-            <p className="text-zinc-400 mt-2 text-lg">
-              Track food. Train hard. Look unreal.
-            </p>
-          </div>
-        </div>
+        {/* HEADER */}
+        <h1 className="text-6xl font-black mb-10">
+          CALORI<span className="text-orange-500">X</span>
+        </h1>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
-          <div className="bg-zinc-950 border border-zinc-800 rounded-3xl p-6">
-            <p className="text-zinc-500 uppercase text-xs tracking-[0.2em]">
-              Calories
-            </p>
-
-            <h2 className="text-6xl font-black mt-4">
-              {totals.calories}
-            </h2>
-
-            <div className="mt-6 w-full bg-zinc-900 rounded-full h-4 overflow-hidden">
-              <div
-                className="bg-gradient-to-r from-orange-500 to-pink-500 h-full rounded-full"
-                style={{
-                  width: `${Math.min(
-                    (totals.calories / 2500) * 100,
-                    100
-                  )}%`,
-                }}
-              />
-            </div>
-
-            <div className="flex justify-between mt-3 text-sm text-zinc-400">
-              <span>Daily Progress</span>
-              <span>2500 goal</span>
-            </div>
-          </div>
-
-          <div className="bg-zinc-950 border border-zinc-800 rounded-3xl p-6">
-            <p className="text-zinc-500 uppercase text-xs tracking-[0.2em] mb-5">
-              Macros
-            </p>
-
-            <div className="space-y-5">
-              <MacroBar
-                label="Protein"
-                value={totals.protein}
-                color="bg-orange-500"
-              />
-
-              <MacroBar
-                label="Carbs"
-                value={totals.carbs}
-                color="bg-pink-500"
-              />
-
-              <MacroBar
-                label="Fat"
-                value={totals.fat}
-                color="bg-yellow-400"
-              />
-            </div>
-          </div>
-
-          <div className="bg-gradient-to-br from-orange-500 to-pink-600 rounded-3xl p-6 text-black">
-            <p className="uppercase text-xs tracking-[0.2em] font-bold opacity-70">
-              Foods Database
-            </p>
-
-            <h2 className="text-7xl font-black mt-4">
-              {foods.length}
-            </h2>
-
-            <p className="font-semibold text-lg mt-2">
-              foods loaded
-            </p>
-          </div>
-        </div>
-
+        {/* SEARCH */}
         <div className="bg-zinc-950 border border-zinc-800 rounded-3xl p-6 mb-8">
-          <h3 className="text-3xl font-black mb-6">
-            Search Foods
-          </h3>
-
           <input
-            type="text"
-            placeholder="Search foods..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full bg-zinc-900 border border-zinc-800 rounded-2xl px-5 py-4 text-lg outline-none focus:border-orange-500"
+            placeholder="Search foods..."
+            className="w-full bg-zinc-900 p-4 rounded-xl"
           />
 
           {search && (
             <div className="mt-4 space-y-3">
-              {filteredFoods.map((food, index) => (
+              {filteredFoods.map(food => (
                 <button
-                  key={index}
+                  key={food.id}
                   onClick={() => addFood(food)}
-                  className="w-full bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 rounded-2xl p-4 text-left transition-all"
+                  className="w-full bg-zinc-900 p-4 rounded-xl text-left"
                 >
-                  <div className="flex justify-between items-center">
+                  <div className="flex justify-between">
                     <div>
-                      <h4 className="font-bold text-lg">
-                        {food.name}
-                      </h4>
-
-                      <p className="text-zinc-400">
-                        {food.calories} kcal · {food.grams}g
+                      <p className="font-bold">{food.name}</p>
+                      <p className="text-sm text-zinc-400">
+                        {food.calories} kcal
                       </p>
                     </div>
 
-                    <div className="text-right text-sm text-zinc-400">
-                      <p>P {food.protein}g</p>
-                      <p>C {food.carbs}g</p>
-                      <p>F {food.fat}g</p>
+                    <div className="text-sm text-right text-zinc-400">
+                      P {food.protein}g · C {food.carbs}g · F {food.fat}g
                     </div>
                   </div>
                 </button>
@@ -217,85 +149,60 @@ export default function CaloriXApp() {
           )}
         </div>
 
-        <div className="bg-zinc-950 border border-zinc-800 rounded-3xl p-6">
-          <h3 className="text-3xl font-black mb-6">
-            Today's Foods
-          </h3>
+        {/* SELECTED FOODS */}
+        <div className="space-y-4">
+          {selectedFoods.map(food => {
+            const isOpen = expanded[food.id]
 
-          <div className="space-y-4">
-            {selectedFoods.map((food, index) => (
+            return (
               <div
-                key={index}
-                className="bg-zinc-900 rounded-2xl p-5 border border-zinc-800"
+                key={food.id}
+                onClick={() => toggleFood(food.id)}
+                className="bg-zinc-900 border border-zinc-800 rounded-2xl p-5 cursor-pointer"
               >
-                <div className="flex justify-between items-center">
+                {/* COLLAPSED VIEW */}
+                <div className="flex justify-between">
                   <div>
-                    <h4 className="font-bold text-xl">
-                      {food.name}
-                    </h4>
-
+                    <p className="text-xl font-bold">{food.name}</p>
                     <p className="text-zinc-400">
                       {food.calories} kcal · {food.grams}g
                     </p>
                   </div>
 
-                  <div className="text-right">
-                    <p className="text-orange-400">
-                      P {food.protein}g
-                    </p>
-
-                    <p className="text-pink-400">
-                      C {food.carbs}g
-                    </p>
-
-                    <p className="text-yellow-400">
-                      F {food.fat}g
-                    </p>
+                  <div className="text-right text-sm">
+                    <p>P {food.protein}g</p>
+                    <p>C {food.carbs}g</p>
+                    <p>F {food.fat}g</p>
                   </div>
                 </div>
-              </div>
-            ))}
 
-            {selectedFoods.length === 0 && (
-              <div className="text-zinc-500 text-center py-10">
-                No foods added yet
+                {/* EXPANDED VIEW */}
+                {isOpen && (
+                  <div className="mt-4 pt-4 border-t border-zinc-700 grid grid-cols-2 gap-2 text-sm text-zinc-300">
+                    {Object.entries(food)
+                      .filter(([k, v]) =>
+                        typeof v === 'number' &&
+                        !['calories','protein','carbs','fat','grams'].includes(k)
+                      )
+                      .map(([k, v]) => (
+                        <div key={k} className="flex justify-between">
+                          <span className="capitalize">{k}</span>
+                          <span>{v}</span>
+                        </div>
+                      ))}
+                  </div>
+                )}
               </div>
-            )}
-          </div>
+            )
+          })}
         </div>
-      </div>
-    </div>
-  )
-}
 
-function MacroBar({
-  label,
-  value,
-  color,
-}: {
-  label: string
-  value: number
-  color: string
-}) {
-  return (
-    <div>
-      <div className="flex justify-between mb-2">
-        <span className="font-semibold">
-          {label}
-        </span>
+        {selectedFoods.length === 0 && (
+          <p className="text-center text-zinc-500 mt-10">
+            No foods added yet
+          </p>
+        )}
 
-        <span>
-          {value}g
-        </span>
-      </div>
-
-      <div className="h-3 bg-zinc-900 rounded-full overflow-hidden">
-        <div
-          className={`h-full ${color} rounded-full`}
-          style={{
-            width: `${Math.min(value, 100)}%`,
-          }}
-        />
       </div>
     </div>
   )
