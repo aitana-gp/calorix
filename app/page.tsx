@@ -58,13 +58,16 @@ export default function CaloriXApp() {
   const multiplier = amount / 100
 
   const adjustedFood = {
-  ...food,
-  id: crypto.randomUUID(), // 🔥 AQUÍ VA
+  id: crypto.randomUUID(),
+  name: food.name,
   grams: amount,
-  calories: Math.round(food.calories * multiplier),
-  protein: Math.round(food.protein * multiplier),
-  carbs: Math.round(food.carbs * multiplier),
-  fat: Math.round(food.fat * multiplier),
+  calories: Math.round(Number(food.calories || 0) * multiplier),
+  protein: Math.round(Number(food.protein || 0) * multiplier),
+  carbs: Math.round(Number(food.carbs || 0) * multiplier),
+  fat: Math.round(Number(food.fat || 0) * multiplier),
+
+  // 🔥 GUARDA TODO RAW DEL CSV
+  raw: food,
   }
 
   setSelectedFoods((prev) => [...prev, adjustedFood])
@@ -272,7 +275,7 @@ function toggleExpand(index: number) {
 
                 {expanded[food.id] && (
                   <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-zinc-300 border-t border-zinc-800 pt-3">
-                    {Object.entries(food)
+                    {Object.entries(food.raw || food)
                       .filter(([k]) =>
                         !['name', 'calories', 'protein', 'carbs', 'fat', 'grams'].includes(k)
                       )
