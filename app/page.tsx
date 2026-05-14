@@ -1,11 +1,22 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
+import { createClient } from '@supabase/supabase-js'
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+)
 
 type Food = {
   id: string
   name: string
   grams?: number
+  calories?: number
+  protein?: number
+  carbs?: number
+  fat?: number
+  data?: any
   [key: string]: any
 }
 
@@ -15,6 +26,29 @@ export default function CaloriXApp() {
   const [selectedFoods, setSelectedFoods] = useState<Food[]>([])
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
 
+  // ---------------- PARSE GOOGLE SHEETS ----------------
+  function parseCSV(text: string) {
+    const lines = text.trim().split('\n')
+    const headers = lines[0].split(',').map(h => h.replace(/"/g, '').trim())
+
+    return lines.slice(1).map((line, i) => {
+      const cols = line.split(',')
+
+      const obj: any = { id: i }
+
+      headers.forEach((h, index) => {
+        const key = h.toLowerCase()
+        const value = cols[index]?.replace(/"/g, '')
+
+        obj[key] =
+          value && !isNaN(Number(value)) ? Number(value) : value
+      })
+
+      return obj
+    }).filter(f => f.name)
+  }
+
+  // ---------------- LOAD DATA ----------------
   useEffect(() => {
     async function loadFoods() {
       const res = await fetch(
@@ -22,82 +56,90 @@ export default function CaloriXApp() {
       )
 
       const text = await res.text()
-      const rows = text.trim().split('\n')
+      const parsed = parseCSV(text)
 
-      const headers = rows[0].split(',').map(h => h.replace(/"/g, '').trim())
-
-      const parsedFoods = rows.slice(1).map((row, index) => {
-        const cols = row.split(',')
-
-        const obj: any = {
-          id: `${index}-${cols[0]}`,
-        }
-
-        headers.forEach((header, i) => {
-          const key = header.toLowerCase()
-          const value = cols[i]?.replace(/"/g, '')
-
-          obj[key] =
-            isNaN(Number(value)) || value === ''
-              ? value
-              : Number(value)
-        })
-
-        return obj
-      }).filter(f => f.name)
-
-      setFoods(parsedFoods)
+      setFoods(parsed)
     }
 
     loadFoods()
+    loadMeals()
   }, [])
 
+  // ---------------- LOAD SUPABASE MEALS ----------------
+  async function loadMeals() {
+    const { data } = await supabase
+      .from('meals')
+      .select('*')
+      .order('created_at', { ascending: false })
+
+    if (!data) return
+
+    setSelectedFoods(
+      data.map(m => ({
+        id: m.id,
+        name: m.name,
+        grams: m.grams,
+        calories: m.calories,
+        protein: m.protein,
+        carbs: m.carbs,
+        fat: m.fat,
+        data: m.data || {},
+      }))
+    )
+  }
+
+  // ---------------- SEARCH ----------------
   const filteredFoods = useMemo(() => {
     if (!search) return []
+
     return foods
-      .filter(f => f.name?.toLowerCase().includes(search.toLowerCase()))
+      .filter(f =>
+        f.name.toLowerCase().includes(search.toLowerCase())
+      )
       .slice(0, 8)
   }, [search, foods])
 
-  function addFood(food: Food) {
+  // ---------------- ADD FOOD (FIXED + COMPLETE) ----------------
+  async function addFood(food: any) {
     const grams = prompt('How many grams?')
     if (!grams) return
 
     const amount = Number(grams)
     const multiplier = amount / 100
 
-    const adjusted: Food = {
-      ...food,
+    const adjusted: any = {
+      name: food.name,
       grams: amount,
-      id: `${food.id}-${Date.now()}`,
+      calories: Math.round((food.calories || 0) * multiplier),
+      protein: Math.round((food.protein || 0) * multiplier),
+      carbs: Math.round((food.carbs || 0) * multiplier),
+      fat: Math.round((food.fat || 0) * multiplier),
+
+      // extras dinámicos si existen en tu sheet
+      fiber: food.fiber ? Math.round(food.fiber * multiplier) : null,
+      sugar: food.sugar ? Math.round(food.sugar * multiplier) : null,
+      water: food.water ? Math.round(food.water * multiplier) : null,
+
+      data: food,
+      id: `${Date.now()}`,
     }
 
-    // scale ALL numeric macros dynamically
-    Object.keys(adjusted).forEach(key => {
-      if (
-        key !== 'name' &&
-        key !== 'id' &&
-        typeof adjusted[key] === 'number'
-      ) {
-        adjusted[key] = Math.round(adjusted[key] * multiplier)
-      }
+    setSelectedFoods(prev => [adjusted, ...prev])
+
+    await supabase.from('meals').insert({
+      name: adjusted.name,
+      calories: adjusted.calories,
+      protein: adjusted.protein,
+      carbs: adjusted.carbs,
+      fat: adjusted.fat,
+      grams: adjusted.grams,
+      data: adjusted,
     })
 
-    setSelectedFoods(prev => [...prev, adjusted])
     setSearch('')
   }
 
-  const totals = selectedFoods.reduce(
-    (acc, food) => {
-      acc.calories += food.calories || 0
-      acc.protein += food.protein || 0
-      acc.carbs += food.carbs || 0
-      acc.fat += food.fat || 0
-      return acc
-    },
-    { calories: 0, protein: 0, carbs: 0, fat: 0 }
-  )
-
+  // ---------------- TOGGLE EXPAND ----------------
   function toggleFood(id: string) {
     setExpanded(prev => ({
       ...prev,
@@ -105,105 +147,120 @@ export default function CaloriXApp() {
     }))
   }
 
+  // ---------------- DASHBOARD TOTALS ----------------
+  const totals = selectedFoods.reduce(
+    (acc, f) => {
+      acc.calories += f.calories || 0
+      acc.protein += f.protein || 0
+      acc.carbs += f.carbs || 0
+      acc.fat += f.fat || 0
+      return acc
+    },
+    { calories: 0, protein: 0, carbs: 0, fat: 0 }
+  )
+
   return (
-    <div className="min-h-screen bg-black text-white overflow-hidden">
-      <div className="relative z-10 max-w-6xl mx-auto p-6 md:p-10">
+    <div className="min-h-screen bg-black text-white p-6">
 
-        {/* HEADER */}
-        <h1 className="text-6xl font-black mb-10">
-          CALORI<span className="text-orange-500">X</span>
-        </h1>
-
-        {/* SEARCH */}
-        <div className="bg-zinc-950 border border-zinc-800 rounded-3xl p-6 mb-8">
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search foods..."
-            className="w-full bg-zinc-900 p-4 rounded-xl"
-          />
-
-          {search && (
-            <div className="mt-4 space-y-3">
-              {filteredFoods.map(food => (
-                <button
-                  key={food.id}
-                  onClick={() => addFood(food)}
-                  className="w-full bg-zinc-900 p-4 rounded-xl text-left"
-                >
-                  <div className="flex justify-between">
-                    <div>
-                      <p className="font-bold">{food.name}</p>
-                      <p className="text-sm text-zinc-400">
-                        {food.calories} kcal
-                      </p>
-                    </div>
-
-                    <div className="text-sm text-right text-zinc-400">
-                      P {food.protein}g · C {food.carbs}g · F {food.fat}g
-                    </div>
-                  </div>
-                </button>
-              ))}
-            </div>
-          )}
+      {/* DASHBOARD */}
+      <div className="grid grid-cols-4 gap-4 mb-8">
+        <div className="bg-zinc-900 p-4 rounded-xl">
+          <p>Calories</p>
+          <h2 className="text-3xl font-bold">{totals.calories}</h2>
         </div>
 
-        {/* SELECTED FOODS */}
-        <div className="space-y-4">
-          {selectedFoods.map(food => {
-            const isOpen = expanded[food.id]
-
-            return (
-              <div
-                key={food.id}
-                onClick={() => toggleFood(food.id)}
-                className="bg-zinc-900 border border-zinc-800 rounded-2xl p-5 cursor-pointer"
-              >
-                {/* COLLAPSED VIEW */}
-                <div className="flex justify-between">
-                  <div>
-                    <p className="text-xl font-bold">{food.name}</p>
-                    <p className="text-zinc-400">
-                      {food.calories} kcal · {food.grams}g
-                    </p>
-                  </div>
-
-                  <div className="text-right text-sm">
-                    <p>P {food.protein}g</p>
-                    <p>C {food.carbs}g</p>
-                    <p>F {food.fat}g</p>
-                  </div>
-                </div>
-
-                {/* EXPANDED VIEW */}
-                {isOpen && (
-                  <div className="mt-4 pt-4 border-t border-zinc-700 grid grid-cols-2 gap-2 text-sm text-zinc-300">
-                    {Object.entries(food)
-                      .filter(([k, v]) =>
-                        typeof v === 'number' &&
-                        !['calories','protein','carbs','fat','grams'].includes(k)
-                      )
-                      .map(([k, v]) => (
-                        <div key={k} className="flex justify-between">
-                          <span className="capitalize">{k}</span>
-                          <span>{v}</span>
-                        </div>
-                      ))}
-                  </div>
-                )}
-              </div>
-            )
-          })}
+        <div className="bg-zinc-900 p-4 rounded-xl">
+          <p>Protein</p>
+          <h2 className="text-3xl font-bold">{totals.protein}g</h2>
         </div>
 
-        {selectedFoods.length === 0 && (
-          <p className="text-center text-zinc-500 mt-10">
-            No foods added yet
-          </p>
-        )}
+        <div className="bg-zinc-900 p-4 rounded-xl">
+          <p>Carbs</p>
+          <h2 className="text-3xl font-bold">{totals.carbs}g</h2>
+        </div>
 
+        <div className="bg-zinc-900 p-4 rounded-xl">
+          <p>Fat</p>
+          <h2 className="text-3xl font-bold">{totals.fat}g</h2>
+        </div>
       </div>
+
+      {/* SEARCH */}
+      <input
+        className="w-full p-4 bg-zinc-900 rounded-xl mb-4"
+        placeholder="Search food..."
+        value={search}
+        onChange={e => setSearch(e.target.value)}
+      />
+
+      {/* RESULTS */}
+      {search && (
+        <div className="space-y-2 mb-6">
+          {filteredFoods.map(food => (
+            <button
+              key={food.id}
+              onClick={() => addFood(food)}
+              className="w-full bg-zinc-900 p-4 rounded-xl text-left"
+            >
+              <div className="flex justify-between">
+                <p className="font-bold">{food.name}</p>
+                <p className="text-sm text-zinc-400">
+                  {food.calories} kcal
+                </p>
+              </div>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* SELECTED FOODS */}
+      <div className="space-y-3">
+        {selectedFoods.map(food => (
+          <div key={food.id} className="bg-zinc-900 p-4 rounded-xl">
+
+            {/* MAIN ROW */}
+            <div className="flex justify-between">
+              <div>
+                <p className="font-bold">{food.name}</p>
+                <p className="text-sm text-zinc-400">
+                  {food.calories} kcal · {food.grams}g
+                </p>
+              </div>
+
+              <div className="text-right text-sm">
+                P {food.protein}g · C {food.carbs}g · F {food.fat}g
+              </div>
+            </div>
+
+            {/* BUTTON */}
+            <button
+              onClick={() => toggleFood(food.id)}
+              className="mt-3 text-xs bg-zinc-800 px-3 py-1 rounded"
+            >
+              {expanded[food.id] ? 'Hide details' : 'Expand details'}
+            </button>
+
+            {/* EXPANDED MACROS */}
+            {expanded[food.id] && (
+              <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-zinc-300">
+                {Object.entries(food.data || food)
+                  .filter(([k, v]) =>
+                    typeof v === 'number' &&
+                    !['calories','protein','carbs','fat','grams'].includes(k)
+                  )
+                  .map(([k, v]) => (
+                    <p key={k}>
+                      <span className="capitalize">{k}</span>
+                      <span>{typeof v === 'number' ? v.toFixed(0) : String(v ?? '-')}</span>
+                    </p>
+                  ))}
+              </div>
+            )}
+
+          </div>
+        ))}
+      </div>
+
     </div>
   )
 }
