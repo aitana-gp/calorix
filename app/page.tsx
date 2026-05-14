@@ -24,19 +24,18 @@ export default function CaloriXApp() {
 
           const name = cols[0]?.replace(/"/g, '').trim()
 
-          const getNumber = (str: string | undefined) => {
-            if (!str) return 0
-            const match = str.match(/\d+/g)
-            return match ? Number(match[0]) : 0
+          // 🔥 FIX: buscar números aunque estén pegados (KCAL500, PROT50, etc)
+          const extract = (label: string) => {
+            const match = row.match(new RegExp(label + '(\\d+)', 'i'))
+            return match ? Number(match[1]) : 0
           }
 
           return {
             name,
-
-            calories: getNumber(cols.find(c => c.includes('KCAL'))),
-            carbs: getNumber(cols.find(c => c.includes('CARBS'))),
-            protein: getNumber(cols.find(c => c.includes('PROT'))),
-            fat: getNumber(cols.find(c => c.includes('FATS'))),
+            calories: extract('kcal'),
+            protein: extract('prot'),
+            carbs: extract('carb'),
+            fat: extract('fat'),
           }
         })
         .filter((food) => food.name)
