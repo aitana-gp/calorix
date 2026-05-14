@@ -22,13 +22,21 @@ export default function CaloriXApp() {
         .map((row) => {
           const cols = row.split(',')
 
-          return {
-            name: cols[0]?.replace(/"/g, '').trim(),
+          const name = cols[0]?.replace(/"/g, '').trim()
 
-            calories: Number(cols[1]?.replace(/[^\d.]/g, '')) || 0,
-            protein: Number(cols[2]?.replace(/[^\d.]/g, '')) || 0,
-            carbs: Number(cols[3]?.replace(/[^\d.]/g, '')) || 0,
-            fat: Number(cols[4]?.replace(/[^\d.]/g, '')) || 0,
+          const getNumber = (str: string | undefined) => {
+            if (!str) return 0
+            const match = str.match(/\d+/g)
+            return match ? Number(match[0]) : 0
+          }
+
+          return {
+            name,
+
+            calories: getNumber(cols.find(c => c.includes('KCAL'))),
+            carbs: getNumber(cols.find(c => c.includes('CARBS'))),
+            protein: getNumber(cols.find(c => c.includes('PROT'))),
+            fat: getNumber(cols.find(c => c.includes('FATS'))),
           }
         })
         .filter((food) => food.name)
