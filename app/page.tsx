@@ -56,7 +56,14 @@ export default function CaloriXApp() {
       )
 
       const text = await res.text()
+
+      console.log('RAW CSV TEXT:', text)
+
       const parsed = parseCSV(text)
+
+
+      console.log('PARSED FOODS:', parsed)
+      console.log('FIRST FOOD:', parsed?.[0])
 
       setFoods(parsed)
     }
