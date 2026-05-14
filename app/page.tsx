@@ -6,7 +6,8 @@ export default function CaloriXApp() {
   const [foods, setFoods] = useState<any[]>([])
   const [search, setSearch] = useState('')
   const [selectedFoods, setSelectedFoods] = useState<any[]>([])
-
+  const [expanded, setExpanded] = useState<Record<number, boolean>>({})
+  
   useEffect(() => {
     async function loadFoods() {
       const res = await fetch(
@@ -68,6 +69,13 @@ export default function CaloriXApp() {
   setSelectedFoods((prev) => [...prev, adjustedFood])
 
   setSearch('')
+}
+
+function toggleExpand(index: number) {
+  setExpanded(prev => ({
+    ...prev,
+    [index]: !prev[index],
+  }))
 }
 
   const totals = selectedFoods.reduce(
@@ -253,6 +261,27 @@ export default function CaloriXApp() {
                     </p>
                   </div>
                 </div>
+
+                <button
+                  onClick={() => toggleExpand(index)}
+                  className="mt-2 text-xs bg-zinc-800 px-3 py-1 rounded"
+                >
+                  {expanded[index] ? 'Hide details' : 'Expand details'}
+                </button>
+
+                {expanded[index] && (
+                  <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-zinc-300 border-t border-zinc-800 pt-3">
+                    {Object.entries(food)
+                      .filter(([k]) =>
+                        !['name', 'calories', 'protein', 'carbs', 'fat', 'grams'].includes(k)
+                      )
+                      .map(([k, v]) => (
+                        <p key={k}>
+                          {k}: {String(v)}
+                        </p>
+                      ))}
+                  </div>
+                )}
               </div>
             ))}
 
