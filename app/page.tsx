@@ -73,18 +73,27 @@ export default function CaloriXApp() {
     async function loadFoods() {
       try {
         const res = await fetch(
-          'https://docs.google.com/spreadsheets/d/e/2PACX-1vTGsgfTLNO8W33sjozExwtwZ0hXxZFq5OJKfvl_q92uY-5EZUsN-miK4xs_uxytTEGDcaRdkzxUd7tB/pub?output=csv'
+          'https://docs.google.com/spreadsheets/d/e/2PACX-1vTGsgfTLNO8W33sjozExwtwZ0hXxZFq5OJKfvl_q92uY-5EZUsN-miK4xs_uxytTEGDcaRdkzxUd7tB/pub?output=csv',
+          { cache: 'no-store' }
         )
+
+        // 🔥 DEBUG 1: status de fetch
+        console.log('FETCH STATUS:', res.status)
 
         const text = await res.text()
 
-        console.log('RAW CSV LOADED:', text.slice(0, 200))
+        // 🔥 DEBUG 2: raw CSV preview
+        console.log('CSV LENGTH:', text.length)
+        console.log('CSV PREVIEW:', text.slice(0, 200))
 
         const parsed = parseCSV(text)
 
+        // 🔥 DEBUG 3: resultado final
         console.log('PARSED FOODS:', parsed)
+        console.log('FIRST FOOD:', parsed?.[0])
 
         setFoods(parsed)
+
       } catch (err) {
         console.error('ERROR LOADING FOODS:', err)
       }
