@@ -6,8 +6,8 @@ export default function CaloriXApp() {
   const [foods, setFoods] = useState<any[]>([])
   const [search, setSearch] = useState('')
   const [selectedFoods, setSelectedFoods] = useState<any[]>([])
-  const [expanded, setExpanded] = useState<Record<number, boolean>>({})
-  
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({})  
+
   useEffect(() => {
     async function loadFoods() {
       const res = await fetch(
@@ -71,10 +71,10 @@ export default function CaloriXApp() {
   setSearch('')
 }
 
-function toggleExpand(index: number) {
+function toggleExpand(name: string) {
   setExpanded(prev => ({
     ...prev,
-    [index]: !prev[index],
+    [name]: !prev[name],
   }))
 }
 
@@ -263,13 +263,13 @@ function toggleExpand(index: number) {
                 </div>
 
                 <button
-                  onClick={() => toggleExpand(index)}
+                  onClick={() => toggleExpand(food.name)}
                   className="mt-2 text-xs bg-zinc-800 px-3 py-1 rounded"
                 >
-                  {expanded[index] ? 'Hide details' : 'Expand details'}
+                  {expanded[food.name] ? 'Hide details' : 'Expand details'}
                 </button>
 
-                {expanded[index] && (
+                {expanded[food.name] && (
                   <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-zinc-300 border-t border-zinc-800 pt-3">
                     {Object.entries(food)
                       .filter(([k]) =>
