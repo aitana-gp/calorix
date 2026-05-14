@@ -58,12 +58,13 @@ export default function CaloriXApp() {
   const multiplier = amount / 100
 
   const adjustedFood = {
-    ...food,
-    grams: amount,
-    calories: Math.round(food.calories * multiplier),
-    protein: Math.round(food.protein * multiplier),
-    carbs: Math.round(food.carbs * multiplier),
-    fat: Math.round(food.fat * multiplier),
+  ...food,
+  id: crypto.randomUUID(), // 🔥 AQUÍ VA
+  grams: amount,
+  calories: Math.round(food.calories * multiplier),
+  protein: Math.round(food.protein * multiplier),
+  carbs: Math.round(food.carbs * multiplier),
+  fat: Math.round(food.fat * multiplier),
   }
 
   setSelectedFoods((prev) => [...prev, adjustedFood])
@@ -231,9 +232,9 @@ function toggleExpand(index: number) {
           </h3>
 
           <div className="space-y-4">
-            {selectedFoods.map((food, index) => (
+            {selectedFoods.map((food) => (
               <div
-                key={index}
+                key={food.id}
                 className="bg-zinc-900 rounded-2xl p-5 border border-zinc-800"
               >
                 <div className="flex justify-between items-center">
@@ -263,13 +264,13 @@ function toggleExpand(index: number) {
                 </div>
 
                 <button
-                  onClick={() => toggleExpand(index)}
+                  onClick={() => toggleExpand(food.id)}
                   className="mt-2 text-xs bg-zinc-800 px-3 py-1 rounded"
                 >
-                  {expanded[index] ? 'Hide details' : 'Expand details'}
+                  {expanded[food.id] ? 'Hide details' : 'Expand details'}
                 </button>
 
-                {expanded[index] && (
+                {expanded[food.id] && (
                   <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-zinc-300 border-t border-zinc-800 pt-3">
                     {Object.entries(food)
                       .filter(([k]) =>
