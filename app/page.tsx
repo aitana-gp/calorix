@@ -3,10 +3,14 @@
 import { useEffect, useMemo, useState } from 'react'
 import { createClient } from '@supabase/supabase-js'
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-)
+/* ---------------- SAFE SUPABASE INIT ---------------- */
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+
+const supabase =
+  supabaseUrl && supabaseKey
+    ? createClient(supabaseUrl, supabaseKey)
+    : null
 
 type Food = {
   id: string
@@ -22,44 +26,39 @@ type Food = {
 
 /* ---------------- SAFE CSV PARSER ---------------- */
 function parseCSV(text: string) {
-  const lines = text
-    .replace(/\r/g, '')
-    .trim()
-    .split('\n')
+  try {
+    const lines = text.replace(/\r/g, '').trim().split('\n')
 
-  if (lines.length < 2) return []
+    if (lines.length < 2) return []
 
-  const headers = lines[0]
-    .split(',')
-    .map(h => h.replace(/"/g, '').trim().toLowerCase())
+    const headers = lines[0]
+      .split(',')
+      .map(h => h.replace(/"/g, '').trim().toLowerCase())
 
-  return lines.slice(1).map((line, i) => {
-    const cols = line.split(',')
+    return lines.slice(1).map((line, i) => {
+      const cols = line.split(',')
 
-    const obj: any = {
-      id: `${i}`,
-    }
+      const obj: any = { id: `${i}` }
 
-    headers.forEach((h, index) => {
-      const raw = cols[index]?.replace(/"/g, '').trim()
+      headers.forEach((h, index) => {
+        const raw = cols[index]?.replace(/"/g, '').trim()
+        if (!raw) return
+        obj[h] = isNaN(Number(raw)) ? raw : Number(raw)
+      })
 
-      if (!raw) return
+      return obj
+    }).filter(f => f.name)
 
-      obj[h] = isNaN(Number(raw)) ? raw : Number(raw)
-    })
-
-    return obj
-  }).filter(f => f.name)
+  } catch (e) {
+    console.log('PARSE ERROR:', e)
+    return []
+  }
 }
 
 /* ---------------- FUZZY SEARCH ---------------- */
 function fuzzyMatch(text: string, query: string) {
   if (!text || !query) return false
-
-  const t = text.toLowerCase()
-  const q = query.toLowerCase()
-
-  return t.includes(q)
+  return text.toLowerCase().includes(query.toLowerCase())
 }
 
 export default function CaloriXApp() {
@@ -68,7 +67,7 @@ export default function CaloriXApp() {
   const [selectedFoods, setSelectedFoods] = useState<Food[]>([])
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
 
-  /* ---------------- LOAD GOOGLE SHEETS ---------------- */
+  /* ---------------- LOAD CSV SAFE ---------------- */
   useEffect(() => {
     async function loadFoods() {
       try {
@@ -77,25 +76,31 @@ export default function CaloriXApp() {
           { cache: 'no-store' }
         )
 
-        // 🔥 DEBUG 1: status de fetch
         console.log('FETCH STATUS:', res.status)
+
+        if (!res.ok) {
+          console.log('CSV FAILED TO LOAD')
+          setFoods([])
+          return
+        }
 
         const text = await res.text()
 
-        // 🔥 DEBUG 2: raw CSV preview
-        console.log('CSV LENGTH:', text.length)
-        console.log('CSV PREVIEW:', text.slice(0, 200))
+        if (!text || text.length < 50) {
+          console.log('CSV EMPTY')
+          setFoods([])
+          return
+        }
 
         const parsed = parseCSV(text)
 
-        // 🔥 DEBUG 3: resultado final
-        console.log('PARSED FOODS:', parsed)
-        console.log('FIRST FOOD:', parsed?.[0])
+        console.log('PARSED FOODS:', parsed.length)
 
         setFoods(parsed)
 
       } catch (err) {
-        console.error('ERROR LOADING FOODS:', err)
+        console.log('LOAD ERROR:', err)
+        setFoods([])
       }
     }
 
@@ -119,7 +124,7 @@ export default function CaloriXApp() {
     const amount = Number(grams)
     const multiplier = amount / 100
 
-    const adjusted: any = {
+    const adjusted = {
       id: `${Date.now()}`,
       name: food.name,
       grams: amount,
@@ -132,20 +137,21 @@ export default function CaloriXApp() {
 
     setSelectedFoods(prev => [adjusted, ...prev])
 
-    await supabase.from('meals').insert({
-      name: adjusted.name,
-      calories: adjusted.calories,
-      protein: adjusted.protein,
-      carbs: adjusted.carbs,
-      fat: adjusted.fat,
-      grams: adjusted.grams,
-      data: adjusted,
-    })
+    if (supabase) {
+      await supabase.from('meals').insert({
+        name: adjusted.name,
+        calories: adjusted.calories,
+        protein: adjusted.protein,
+        carbs: adjusted.carbs,
+        fat: adjusted.fat,
+        grams: adjusted.grams,
+        data: adjusted,
+      })
+    }
 
     setSearch('')
   }
 
-  /* ---------------- TOGGLE ---------------- */
   function toggle(id: string) {
     setExpanded(prev => ({
       ...prev,
@@ -153,7 +159,6 @@ export default function CaloriXApp() {
     }))
   }
 
-  /* ---------------- TOTALS ---------------- */
   const totals = selectedFoods.reduce(
     (acc, f) => {
       acc.calories += f.calories || 0
@@ -168,7 +173,7 @@ export default function CaloriXApp() {
   return (
     <div className="min-h-screen bg-black text-white p-6">
 
-      {/* DASHBOARD */}
+      {/* DASHBOARD (SIEMPRE VISIBLE) */}
       <div className="grid grid-cols-4 gap-4 mb-8">
         <div className="bg-zinc-900 p-4 rounded-xl">
           <p>Calories</p>
@@ -256,9 +261,7 @@ export default function CaloriXApp() {
                     !['calories','protein','carbs','fat','grams'].includes(k)
                   )
                   .map(([k, v]) => (
-                    <p key={k}>
-                      {k}: {String(v)}
-                    </p>
+                    <p key={k}>{k}: {String(v)}</p>
                   ))}
               </div>
             )}
