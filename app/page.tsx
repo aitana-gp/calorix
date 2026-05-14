@@ -60,14 +60,16 @@ export default function CaloriXApp() {
   const adjustedFood = {
   id: crypto.randomUUID(),
   name: food.name,
+
   grams: amount,
+
   calories: Math.round(Number(food.calories || 0) * multiplier),
   protein: Math.round(Number(food.protein || 0) * multiplier),
   carbs: Math.round(Number(food.carbs || 0) * multiplier),
   fat: Math.round(Number(food.fat || 0) * multiplier),
 
-  // 🔥 GUARDA TODO RAW DEL CSV
-  raw: food,
+  // 🔥 guarda todo el original sin romper nada
+  data: { ...food },
   }
 
   setSelectedFoods((prev) => [...prev, adjustedFood])
@@ -268,17 +270,14 @@ function toggleExpand(index: number) {
 
                 <button
                   onClick={() => toggleExpand(food.id)}
-                  className="mt-2 text-xs bg-zinc-800 px-3 py-1 rounded"
                 >
                   {expanded[food.id] ? 'Hide details' : 'Expand details'}
                 </button>
 
                 {expanded[food.id] && (
                   <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-zinc-300 border-t border-zinc-800 pt-3">
-                    {Object.entries(food.raw || food)
-                      .filter(([k]) =>
-                        !['name', 'calories', 'protein', 'carbs', 'fat', 'grams'].includes(k)
-                      )
+                    {Object.entries(food.data || {})
+                      .filter(([k, v]) => typeof v === 'number' || typeof v === 'string')
                       .map(([k, v]) => (
                         <p key={k}>
                           {k}: {String(v)}
